@@ -1,11 +1,18 @@
+// Load environment variables from .env into Deno.env
+// This lets us use GROQ_API_KEY without extra flags.
+import "jsr:@std/dotenv/load";
+
 import {
-  AnthropicModelProvider,
+  OpenAIModelProvider,
   createZypherContext,
   ZypherAgent,
 } from "@corespeed/zypher";
 import { eachValueFrom } from "rxjs-for-await";
 
-// Helper to fetch required env vars
+/**
+ * Helper to fetch a required environment variable.
+ * If the variable is missing, we throw an error early instead of failing later.
+ */
 function getRequiredEnv(name: string): string {
   const value = Deno.env.get(name);
   if (!value) {
@@ -15,11 +22,12 @@ function getRequiredEnv(name: string): string {
 }
 
 async function main() {
-  // 1) Get PRD file path from CLI args (or default)
+  // 1) Determine which PRD file to use.
+  //    If a file path is passed as a CLI argument, use that; otherwise default to sample_prd.txt.
   const inputPath = Deno.args[0] ?? "sample_prd.txt";
-
   console.log(`Using PRD file: ${inputPath}`);
 
+  // 2) Read the PRD text from disk.
   let prdText: string;
   try {
     prdText = await Deno.readTextFile(inputPath);
@@ -28,18 +36,26 @@ async function main() {
     Deno.exit(1);
   }
 
-  // 2) Initialize Zypher context (workspace is current directory)
+  // 3) Initialize Zypher's context for this workspace (current directory).
+  //    Zypher uses this to manage tasks, tools, and state for the agent.
   const zypherContext = await createZypherContext(Deno.cwd());
 
-  // 3) Configure Anthropic provider (Claude)
-  const provider = new AnthropicModelProvider({
-    apiKey: getRequiredEnv("ANTHROPIC_API_KEY"),
+  // 4) Configure the model provider.
+  //    Here we use Zypher's OpenAIModelProvider but point it at Groq's
+  //    OpenAI-compatible API endpoint, authenticated via GROQ_API_KEY.
+  const provider = new OpenAIModelProvider({
+    apiKey: getRequiredEnv("GROQ_API_KEY"),
+    baseUrl: "https://api.groq.com/openai/v1",
   });
 
-  // 4) Create Zypher agent
+  // 5) Create a ZypherAgent instance that will execute tasks using the provider + context above.
   const agent = new ZypherAgent(zypherContext, provider);
 
-  // 5) Define the task prompt for the Product Requirements-to-Design Agent
+  // 6) Build the task description for our "ProductDesignAgent".
+  //    This is the core prompt that explains:
+  //      - the agent's role,
+  //      - the exact sections we want in the output,
+  //      - and embeds the PRD text at the end.
   const taskDescription = `
 You are ProductDesignAgent, an expert product+engineering architect.
 
@@ -99,20 +115,35 @@ ${prdText}
 PRD_END>>>
 `.trim();
 
-  // 6) Run the task with Zypher and stream events
-  const modelName = "claude-sonnet-4-20250514";
+  // 7) Choose the Groq model to use.
+  //    This is a current Llama 3.3 70B model exposed via the OpenAI-compatible API.
+  const modelName = "llama-3.3-70b-versatile";
 
-  console.log("Running ProductDesignAgent with Zypher...\n");
+  console.log("Running ProductDesignAgent with Zypher + Groq...\n");
 
+  // 8) Ask Zypher to run the task.
+  //    Zypher returns a stream of events (tokens / messages) rather than a single blob.
   const event$ = agent.runTask(taskDescription, modelName);
 
-  // 7) Stream events as they arrive
+  // 9) Collect the streamed text events into a single markdown string.
+  //    This avoids dumping raw event objects and gives us a clean design document at the end.
+  let finalText = "";
+
   for await (const event of eachValueFrom(event$)) {
-    console.log(event);
+    // Zypher can emit different event types; here we only care about the text chunks.
+    if (event.type === "text") {
+      finalText += event.content;
+    }
   }
+
+  // 10) Print the final generated design in a readable way.
+  console.log("\n================= GENERATED DESIGN =================\n");
+  console.log(finalText.trim());
+  console.log("\n====================================================\n");
 }
 
-// Entry point
+// Standard Deno pattern: only run main() when this file is executed directly,
+// not when it's imported from another module.
 if (import.meta.main) {
   main();
 }
