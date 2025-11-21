@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "design": "deno run -A main.ts sample_prd.txt",
+    "design:custom": "deno run -A main.ts"
+  }
+}

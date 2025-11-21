@@ -1,0 +1,21 @@
+Product: Smart Receipt Uploader for Personal Budgeting
+
+Context:
+Our mobile app helps individuals track their monthly spending. Right now, users have to manually type in each expense, which is slow and error-prone.
+
+High-Level Idea:
+Allow users to upload photos or PDFs of receipts, automatically extract key fields (total amount, date, merchant, category), and sync them to their budgeting dashboard.
+
+Core Needs:
+- User can upload a receipt from mobile.
+- We automatically read the total, tax, date, and merchant.
+- User can review and edit extracted data before saving.
+- Expenses should appear in the existing "Monthly Budget" view.
+- User can delete or correct a receipt later.
+- Users want a simple way to export monthly expenses to CSV.
+
+Constraints / Notes:
+- MVP can be English-only.
+- We don't need to support handwritten receipts in v1.
+- Must not break existing budgeting features.
+- We should handle failed OCR gracefully (e.g., "we couldn't read this, please type it in").
